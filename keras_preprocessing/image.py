@@ -1927,27 +1927,33 @@ class DirectoryIterator(Iterator):
                                                 batch_size,
                                                 shuffle,
                                                 seed)
+        # todo: cleanup pool
+        self.pool = multiprocessing.pool.ThreadPool(multiprocessing.cpu_count() * 2)
+
+    def _load_image_and_apply_transform(self, j):
+        fname = self.filenames[j]
+        img = load_img(os.path.join(self.directory, fname),
+                       color_mode=self.color_mode,
+                       target_size=self.target_size,
+                       interpolation=self.interpolation)
+        x = img_to_array(img, data_format=self.data_format)
+        # Pillow images should be closed after `load_img`,
+        # but not PIL images.
+        if hasattr(img, 'close'):
+            img.close()
+        params = self.image_data_generator.get_random_transform(x.shape)
+        x = self.image_data_generator.apply_transform(x, params)
+        x = self.image_data_generator.standardize(x)
+        return x
 
     def _get_batches_of_transformed_samples(self, index_array):
         batch_x = np.zeros(
             (len(index_array),) + self.image_shape,
             dtype=self.dtype)
         # build batch of image data
-        for i, j in enumerate(index_array):
-            fname = self.filenames[j]
-            img = load_img(os.path.join(self.directory, fname),
-                           color_mode=self.color_mode,
-                           target_size=self.target_size,
-                           interpolation=self.interpolation)
-            x = img_to_array(img, data_format=self.data_format)
-            # Pillow images should be closed after `load_img`,
-            # but not PIL images.
-            if hasattr(img, 'close'):
-                img.close()
-            params = self.image_data_generator.get_random_transform(x.shape)
-            x = self.image_data_generator.apply_transform(x, params)
-            x = self.image_data_generator.standardize(x)
-            batch_x[i] = x
+        results = self.pool.map(self._load_image_and_apply_transform, index_array)
+        for i in range(len(index_array)):
+            batch_x[i] = results[i]
         # optionally save augmented images to disk for debugging purposes
         if self.save_to_dir:
             for i, j in enumerate(index_array):
