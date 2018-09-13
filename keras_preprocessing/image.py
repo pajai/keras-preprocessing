@@ -1923,12 +1923,14 @@ class DirectoryIterator(Iterator):
 
         pool.close()
         pool.join()
+
+        # todo: cleanup pool
+        self.pool = multiprocessing.pool.ThreadPool(multiprocessing.cpu_count() * 2)
+
         super(DirectoryIterator, self).__init__(self.samples,
                                                 batch_size,
                                                 shuffle,
                                                 seed)
-        # todo: cleanup pool
-        self.pool = multiprocessing.pool.ThreadPool(multiprocessing.cpu_count() * 2)
 
     def _load_image_and_apply_transform(self, j):
         fname = self.filenames[j]
